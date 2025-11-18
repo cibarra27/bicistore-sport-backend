@@ -13,7 +13,13 @@ const orderRoutes = require("./routes/orders");
 const app = express();
 
 app.use(helmet());
-app.use(cors({ origin: "*" })); // en producción: restringir al dominio del frontend
+const cors = require("cors");
+
+app.use(cors({
+    origin: "*",   // permite cualquier origen para pruebas
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type"]
+}));
 app.use(express.json());
 
 app.use("/api/auth", authRoutes);
