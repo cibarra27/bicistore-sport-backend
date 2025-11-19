@@ -18,4 +18,12 @@ router.get("/debug-users", async (req, res) => {
     res.status(500).json({ error: "Error al obtener usuarios" });
   }
 });
+router.get("/debug-users", async (req, res) => {
+  try {
+    const users = await getAllUsers();
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ error: "Error al obtener usuarios" });
+  }
+});
 module.exports = router;
