@@ -36,4 +36,23 @@ router.get("/debug-tables", (req, res) => {
     res.json(rows);
   });
 });
+// Crear tabla admin_users sin borrar datos existentes
+router.get("/create-admin-table", (req, res) => {
+  const sqlite3 = require("sqlite3").verbose();
+  const dbPath = require("path").join(__dirname, "..", "bicistore.db");
+  const db = new sqlite3.Database(dbPath);
+
+  db.run(
+    `CREATE TABLE IF NOT EXISTS admin_users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL,
+      password TEXT NOT NULL,
+      role TEXT DEFAULT 'admin'
+    )`,
+    (err) => {
+      if (err) return res.status(500).json({ error: err.message });
+      return res.json({ message: "Tabla admin_users creada OK" });
+    }
+  );
+});
 module.exports = router;
