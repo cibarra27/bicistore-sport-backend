@@ -59,6 +59,16 @@ exports.login = (req, res) => {
   );
 };
 
+// 🟣 NUEVO: Obtener lista de usuarios (para debug)
+async function getAllUsers() {
+  return new Promise((resolve, reject) => {
+    db.all("SELECT id, username, role FROM admin_users", (err, rows) => {
+      if (err) return reject(err);
+      resolve(rows);
+    });
+  });
+}
+
 // Middleware para proteger rutas (si lo usas)
 exports.verifyToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -80,3 +90,5 @@ exports.verifyToken = (req, res, next) => {
     next();
   });
 };
+
+exports.getAllUsers = getAllUsers;
