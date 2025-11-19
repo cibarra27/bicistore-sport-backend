@@ -55,4 +55,18 @@ router.get("/create-admin-table", (req, res) => {
     }
   );
 });
+router.get("/create-admin", (req, res) => {
+  const sqlite3 = require("sqlite3").verbose();
+  const dbPath = require("path").join(__dirname, "..", "bicistore.db");
+  const db = new sqlite3.Database(dbPath);
+
+  db.run(
+    "INSERT INTO admin_users (username, password) VALUES (?, ?)",
+    ["admin", "admin123"],
+    function (err) {
+      if (err) return res.status(500).json({ error: err.message });
+      return res.json({ message: "Usuario admin creado", id: this.lastID });
+    }
+  );
+});
 module.exports = router;
