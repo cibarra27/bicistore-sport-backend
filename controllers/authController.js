@@ -1,56 +1,99 @@
-// backend/controllers/authController.js
-const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken");
-const db = require("../db");
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+const db = require('../db');
 
-function seedAdminUser() {
-  const username = process.env.ADMIN_USERNAME || "admin";
-  const password = process.env.ADMIN_PASSWORD || "admin123";
+const JWT_SECRET = process.env.JWT_SECRET;
 
-  const sql = "SELECT id FROM users WHERE username = ?";
-  db.get(sql, [username], async (err, row) => {
-    if (err) {
-      console.error("Error buscando admin:", err);
-      return;
-    }
-    if (row) return; // ya existe
-
-    try {
-      const hash = await bcrypt.hash(password, 10);
-      const insert =
-        "INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'admin')";
-      db.run(insert, [username, hash], (err2) => {
-        if (err2) console.error("Error creando admin:", err2);
-        else console.log("Usuario admin inicial creado:", username);
-      });
-    } catch (error) {
-      console.error("Error generando hash:", error);
-    }
-  });
+// Solo aviso en logs si falta, pero en producción debe estar SIEMPRE definido.
+if (!JWT_SECRET) {
+  console.warn(
+    '⚠️  JWT_SECRET no está definido en las variables de entorno. ' +
+    'Define JWT_SECRET en tu .env y en Render Environment.'
+  );
 }
 
-function login(req, res) {
-  const { username, password } = req.body;
-  if (!username || !password)
-    return res
-      .status(400)
-      .json({ message: "Usuario y contraseña son requeridos" });
+// POST /api/auth/login
+// Body esperado: { "username": "admin", "password": "admin123" }
+async function login(req, res) {
+  try {
+    const { username, password } = req.body;
 
-  const sql = "SELECT * FROM users WHERE username = ?";
-  db.get(sql, [username], async (err, user) => {
-    if (err) return res.status(500).json({ message: "Error interno" });
-    if (!user) return res.status(401).json({ message: "Credenciales inválidas" });
+    if (!username || !password) {
+      return res
+        .status(400)
+        .json({ error: 'Usuario y contraseña son obligatorios.' });
+    }
 
-    const ok = await bcrypt.compare(password, user.password_hash);
-    if (!ok) return res.status(401).json({ message: "Credenciales inválidas" });
+    // Buscar usuario en SQLite
+    db.get(
+      'SELECT id, username, password FROM users WHERE username = ?',
+      [username],
+      (err, user) => {
+        if (err) {
+          console.error('Error consultando usuario:', err);
+          return res
+            .status(500)
+            .json({ error: 'Error en el servidor al buscar el usuario.' });
+        }
 
-    const token = jwt.sign(
-      { userId: user.id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: "8h" }
+        if (!user) {
+          // Usuario no encontrado
+          return res.status(401).json({ error: 'Credenciales incorrectas.' });
+        }
+
+        const storedPassword = user.password || '';
+
+        // Función para validar la contraseña (soporta hash bcrypt o texto plano)
+        const checkPassword = (callback) => {
+          if (!storedPassword) return callback(false);
+
+          // Si parece un hash bcrypt ($2a$, $2b$, etc.)
+          if (storedPassword.startsWith('$2')) {
+            bcrypt.compare(password, storedPassword, (err, same) => {
+              if (err) {
+                console.error('Error comparando contraseña:', err);
+                return callback(false);
+              }
+              callback(same);
+            });
+          } else {
+            // Texto plano (solo por simplicidad en este proyecto)
+            callback(password === storedPassword);
+          }
+        };
+
+        checkPassword((isValid) => {
+          if (!isValid) {
+            return res.status(401).json({ error: 'Credenciales incorrectas.' });
+          }
+
+          // IMPORTANTE: aquí es donde antes explotaba tu API
+          // Ahora SIEMPRE usamos process.env.JWT_SECRET
+          const secret = JWT_SECRET || 'bicistore-dev-secret';
+
+          const token = jwt.sign(
+            {
+              id: user.id,
+              username: user.username,
+            },
+            secret,
+            { expiresIn: '24h' }
+          );
+
+          return res.json({
+            success: true,
+            token,
+            username: user.username,
+          });
+        });
+      }
     );
-    res.json({ token });
-  });
+  } catch (error) {
+    console.error('Error en login:', error);
+    return res.status(500).json({ error: 'Error en el servidor.' });
+  }
 }
 
-module.exports = { login, seedAdminUser };
+module.exports = {
+  login,
+};
