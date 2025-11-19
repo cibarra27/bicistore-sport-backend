@@ -26,4 +26,14 @@ router.get("/debug-users", async (req, res) => {
     res.status(500).json({ error: "Error al obtener usuarios" });
   }
 });
+router.get("/debug-tables", (req, res) => {
+  const sqlite3 = require("sqlite3").verbose();
+  const dbPath = require("path").join(__dirname, "..", "bicistore.db");
+  const db = new sqlite3.Database(dbPath);
+
+  db.all("SELECT name FROM sqlite_master WHERE type='table'", (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
 module.exports = router;
