@@ -1,94 +1,56 @@
-// controllers/authController.js
-const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
-const jwt = require('jsonwebtoken');
+// backend/controllers/authController.js
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const db = require("../db");
 
-// Ruta a la base de datos SQLite
-const dbPath = path.join(__dirname, '..', 'bicistore.db');
-const db = new sqlite3.Database(dbPath);
+function seedAdminUser() {
+  const username = process.env.ADMIN_USERNAME || "admin";
+  const password = process.env.ADMIN_PASSWORD || "admin123";
 
-// Clave secreta para JWT (de variables de entorno)
-const JWT_SECRET = process.env.JWT_SECRET;
-
-// Helper para verificar que exista la clave
-function ensureJwtSecret(res) {
-  if (!JWT_SECRET) {
-    console.error('😱 JWT_SECRET NO está configurado en las variables de entorno');
-    return res
-      .status(500)
-      .json({ error: 'Error de configuración del servidor (JWT_SECRET faltante)' });
-  }
-  return true;
-}
-
-// POST /api/auth/login
-exports.login = (req, res) => {
-  const { username, password } = req.body;
-
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Usuario y contraseña son requeridos' });
-  }
-
-  db.get(
-    'SELECT * FROM admin_users WHERE username = ?',
-    [username],
-    (err, user) => {
-      if (err) {
-        console.error('Error consultando admin_users:', err);
-        return res.status(500).json({ error: 'Error al autenticar' });
-      }
-
-      if (!user || user.password !== password) {
-        return res.status(401).json({ error: 'Credenciales inválidas' });
-      }
-
-      if (!ensureJwtSecret(res)) return;
-
-      const token = jwt.sign(
-        {
-          id: user.id,
-          username: user.username,
-          role: user.role || 'admin',
-        },
-        JWT_SECRET,
-        { expiresIn: '8h' }
-      );
-
-      res.json({ token });
-    }
-  );
-};
-
-// 🟣 NUEVO: Obtener lista de usuarios (para debug)
-async function getAllUsers() {
-  return new Promise((resolve, reject) => {
-    db.all("SELECT id, username, role FROM admin_users", (err, rows) => {
-      if (err) return reject(err);
-      resolve(rows);
-    });
-  });
-}
-
-// Middleware para proteger rutas (si lo usas)
-exports.verifyToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // "Bearer xxx"
-
-  if (!token) {
-    return res.status(401).json({ error: 'Token requerido' });
-  }
-
-  if (!ensureJwtSecret(res)) return;
-
-  jwt.verify(token, JWT_SECRET, (err, payload) => {
+  const sql = "SELECT id FROM users WHERE username = ?";
+  db.get(sql, [username], async (err, row) => {
     if (err) {
-      console.error('Error verificando token:', err);
-      return res.status(401).json({ error: 'Token inválido' });
+      console.error("Error buscando admin:", err);
+      return;
     }
+    if (row) return; // ya existe
 
-    req.user = payload;
-    next();
+    try {
+      const hash = await bcrypt.hash(password, 10);
+      const insert =
+        "INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'admin')";
+      db.run(insert, [username, hash], (err2) => {
+        if (err2) console.error("Error creando admin:", err2);
+        else console.log("Usuario admin inicial creado:", username);
+      });
+    } catch (error) {
+      console.error("Error generando hash:", error);
+    }
   });
-};
+}
 
-exports.getAllUsers = getAllUsers;
+function login(req, res) {
+  const { username, password } = req.body;
+  if (!username || !password)
+    return res
+      .status(400)
+      .json({ message: "Usuario y contraseña son requeridos" });
+
+  const sql = "SELECT * FROM users WHERE username = ?";
+  db.get(sql, [username], async (err, user) => {
+    if (err) return res.status(500).json({ message: "Error interno" });
+    if (!user) return res.status(401).json({ message: "Credenciales inválidas" });
+
+    const ok = await bcrypt.compare(password, user.password_hash);
+    if (!ok) return res.status(401).json({ message: "Credenciales inválidas" });
+
+    const token = jwt.sign(
+      { userId: user.id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "8h" }
+    );
+    res.json({ token });
+  });
+}
+
+module.exports = { login, seedAdminUser };
